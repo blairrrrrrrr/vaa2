@@ -1,0 +1,89 @@
+[
+  {
+    "name": "commission math",
+    "description": "Place a KES 10,000 order and verify the marketplace records a 15% Vaa commission and KES 8,500 brand earnings.",
+    "steps": [
+      "Place a KES 10,000 order",
+      "Verify commission is KES 1,500",
+      "Verify brand earnings are KES 8,500"
+    ],
+    "expected": "The order is saved with KES 1,500 commission and KES 8,500 brand earnings.",
+    "covers": [
+      "15% commission calculation",
+      "order persistence",
+      "brand earnings"
+    ],
+    "viewport": "desktop",
+    "sanity": true
+  },
+  {
+    "name": "brand signup dashboard access",
+    "description": "Create a new Vaa account using the Brand signup option and verify the account receives brand owner access and opens the dashboard.",
+    "steps": [
+      "Open Sign up",
+      "Choose Brand",
+      "Enter a brand name",
+      "Complete authentication",
+      "Verify the For brands workspace opens"
+    ],
+    "expected": "The brand signup creates brand owner access and the user is automatically taken to the Vaa for brands dashboard.",
+    "covers": [
+      "POST /api/account/profile brand owner provisioning",
+      "GET /api/brand/access",
+      "brand dashboard routing"
+    ],
+    "viewport": "desktop"
+  },
+  {
+    "name": "empty marketplace storefront",
+    "description": "Verify the customer-facing storefront starts with no seeded products or brands.",
+    "steps": [
+      "Open the Shop page",
+      "Inspect the collection grid",
+      "Open the Brands page"
+    ],
+    "expected": "The Shop page shows 0 pieces with no product cards, and the Brands page shows no brand cards.",
+    "covers": [
+      "zero seeded products on frontend",
+      "zero seeded brands on frontend",
+      "empty marketplace state"
+    ],
+    "viewport": "mobile"
+  },
+  {
+    "name": "product image upload and storefront rendering",
+    "description": "Upload a real product image from the brand product manager and verify the product is saved with its image visible in the storefront.",
+    "steps": [
+      "Open For brands",
+      "Open Add a product",
+      "Choose an image file",
+      "Enter a product name and price",
+      "Add the product",
+      "Open Shop and inspect the new product image"
+    ],
+    "expected": "The image file is uploaded, the product is saved, and the uploaded image is visible on the customer storefront.",
+    "covers": [
+      "product image file upload",
+      "storage persistence",
+      "product image rendering"
+    ],
+    "viewport": "desktop"
+  },
+  {
+    "name": "signed-in account menu",
+    "description": "Verify a signed-in user sees the polished user icon account menu and available account actions.",
+    "steps": [
+      "Sign in to Vaa",
+      "Open the user icon",
+      "Inspect the account menu"
+    ],
+    "expected": "The user icon opens an account menu showing the account role and sign-out action, with role dashboard access when applicable.",
+    "covers": [
+      "signed-in user icon",
+      "account menu",
+      "role dashboard navigation",
+      "sign out"
+    ],
+    "viewport": "mobile"
+  }
+]
