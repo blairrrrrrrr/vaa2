@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Sitemap: https://vaa-6ect23.v2.appdeploy.ai/sitemap.xml
+
