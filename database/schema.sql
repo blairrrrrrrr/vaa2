@@ -1,4 +1,5 @@
 -- Vaa PostgreSQL schema
+-- Run this file against a PostgreSQL database before switching the Vaa backend to PostgreSQL.
 -- AppDeploy authentication remains the identity provider; user_id stores its stable user ID.
 
 BEGIN;
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS products (
     owner_user_id TEXT NOT NULL,
     brand TEXT NOT NULL,
     name TEXT NOT NULL,
-    price NUMERIC(12,2) NOT NULL CHECK (price >= 0),
+    price NUMERIC(12, 2) NOT NULL CHECK (price >= 0),
     category TEXT NOT NULL DEFAULT 'Tops',
     color TEXT NOT NULL DEFAULT 'Black',
     sizes TEXT[] NOT NULL DEFAULT ARRAY['M'],
@@ -59,11 +60,11 @@ CREATE TABLE IF NOT EXISTS orders (
     id BIGSERIAL PRIMARY KEY,
     order_id TEXT NOT NULL UNIQUE,
     customer_user_id TEXT,
-    subtotal NUMERIC(12,2) NOT NULL CHECK (subtotal >= 0),
-    shipping NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (shipping >= 0),
-    total NUMERIC(12,2) NOT NULL CHECK (total >= 0),
-    commission_rate NUMERIC(6,5) NOT NULL DEFAULT 0.15,
-    commission NUMERIC(12,2) NOT NULL DEFAULT 0,
+    subtotal NUMERIC(12, 2) NOT NULL CHECK (subtotal >= 0),
+    shipping NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (shipping >= 0),
+    total NUMERIC(12, 2) NOT NULL CHECK (total >= 0),
+    commission_rate NUMERIC(6, 5) NOT NULL DEFAULT 0.15,
+    commission NUMERIC(12, 2) NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'PENDING_PAYMENT',
     delivery_name TEXT NOT NULL DEFAULT '',
     delivery_phone TEXT NOT NULL DEFAULT '',
@@ -82,7 +83,7 @@ CREATE TABLE IF NOT EXISTS order_items (
     product_external_id BIGINT,
     product_name TEXT NOT NULL,
     brand TEXT NOT NULL,
-    price NUMERIC(12,2) NOT NULL CHECK (price >= 0),
+    price NUMERIC(12, 2) NOT NULL CHECK (price >= 0),
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     size TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -97,7 +98,7 @@ CREATE TABLE IF NOT EXISTS payments (
     provider TEXT NOT NULL,
     provider_reference TEXT,
     checkout_reference TEXT,
-    amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+    amount NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
     currency CHAR(3) NOT NULL DEFAULT 'KES',
     status TEXT NOT NULL DEFAULT 'PENDING',
     raw_response JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -112,10 +113,10 @@ CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status);
 CREATE TABLE IF NOT EXISTS commissions (
     id BIGSERIAL PRIMARY KEY,
     order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    rate NUMERIC(6,5) NOT NULL DEFAULT 0.15,
-    gross_sales NUMERIC(12,2) NOT NULL DEFAULT 0,
-    commission NUMERIC(12,2) NOT NULL DEFAULT 0,
-    brand_earnings NUMERIC(12,2) NOT NULL DEFAULT 0,
+    rate NUMERIC(6, 5) NOT NULL DEFAULT 0.15,
+    gross_sales NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    commission NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    brand_earnings NUMERIC(12, 2) NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'PENDING_PAYOUT',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -126,7 +127,7 @@ CREATE TABLE IF NOT EXISTS payouts (
     id BIGSERIAL PRIMARY KEY,
     brand_owner_user_id TEXT NOT NULL,
     brand TEXT NOT NULL,
-    amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+    amount NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
     status TEXT NOT NULL DEFAULT 'PENDING',
     provider TEXT,
     provider_reference TEXT,
@@ -153,5 +154,17 @@ CREATE TABLE IF NOT EXISTS reviews (
 
 CREATE INDEX IF NOT EXISTS idx_reviews_product ON reviews (product_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_customer ON reviews (customer_user_id);
+
+CREATE TABLE IF NOT EXISTS app_records (
+    table_name TEXT NOT NULL,
+    id TEXT NOT NULL,
+    data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (table_name, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_records_table_created
+    ON app_records (table_name, created_at, id);
 
 COMMIT;
