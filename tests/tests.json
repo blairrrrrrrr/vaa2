@@ -1,1 +1,132 @@
-[{"name":"brand order fulfilment and delivery tracking","description":"Verify a brand can see a paid marketplace order, advance fulfilment and attach delivery tracking information.","steps":["Open the brand dashboard with a paid order containing the brand product","Open Orders to fulfil","Move the order to Shipped and provide a courier/tracking number","Verify the order shows Shipped"],"expected":"The brand can advance fulfilment and save delivery tracking information for the customer.","covers":["GET /api/brand/orders","PUT /api/brand/orders","brand order fulfilment","delivery tracking"],"viewport":"desktop","sanity":true},{"name":"customer returns and notifications","description":"Verify an eligible customer can request a return/refund and receive the resulting account notification.","steps":["Open a shipped or delivered order","Request a return/refund with a reason","Open the notifications control","Verify the return request notification is visible"],"expected":"The return/refund request is created and the customer sees a notification confirming receipt.","covers":["POST /api/account/refunds","GET /api/account/notifications","customer returns","customer notifications"],"viewport":"mobile"},{"name":"reviews and stock quality controls","description":"Verify customer-facing product details show live reviews, stock and richer catalog information.","steps":["Open a product Quick view","Inspect SKU, stock, material or care information","Inspect review information"],"expected":"The product modal exposes available catalog quality data, stock state and server-backed review aggregates.","covers":["GET /api/reviews","product SKU","low-stock visibility","material and care information","review aggregate"],"viewport":"mobile"},{"name":"admin marketplace analytics","description":"Verify the admin dashboard exposes marketplace funnel analytics alongside revenue controls.","steps":["Sign in as the Vaa admin","Open Admin","Inspect Launch analytics","Verify page views, product views, add-to-cart, checkout and payment counts are visible"],"expected":"The admin dashboard shows the tracked marketplace funnel metrics.","covers":["GET /api/admin/analytics","analytics funnel","admin operations"],"viewport":"desktop"},{"name":"brand catalog quality controls","description":"Verify a brand product can retain a SKU, stock threshold, material and care information after editing.","steps":["Open the brand dashboard","Open the product manager","Edit a product with SKU, stock threshold, material and care information","Save and reopen Quick view"],"expected":"The saved product retains the merchandising fields and exposes them in customer-facing Quick view.","covers":["POST /api/brand/products","PUT /api/brand/products","product catalog management","inventory controls"],"viewport":"desktop"}]
+[
+  {
+    "name": "Customer and brand owner exchange direct messages",
+    "description": "Verify a customer can contact a brand and the brand owner can open the dashboard inbox, reply, and see the reply persisted in the conversation.",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "product discovery",
+      "product cards inside DMs",
+      "prefilled product inquiry",
+      "customer-brand messaging",
+      "brand dashboard inbox",
+      "brand owner replies",
+      "GET /api/messages",
+      "POST /api/messages",
+      "conversation refresh"
+    ],
+    "steps": [
+      "Actor A signs in as a customer and opens a product",
+      "Actor A chooses Message Brand and verifies the selected product card and prefilled availability/size inquiry appear",
+      "Actor A edits or sends the inquiry about the product",
+      "Actor B signs in as the owner of that brand",
+      "Actor B opens Messages from the brand dashboard navigation",
+      "Actor B opens Actor A's conversation and sends a reply",
+      "Actor A reopens Messages and verifies the reply appears in the same thread"
+    ],
+    "expected": "The brand owner can find and reply to the customer's conversation from the brand dashboard, and both actors see the exchanged messages in the same thread."
+  },
+  {
+    "name": "Brand subscription request and 14-day free trial",
+    "description": "Verify a new brand owner receives a 14-day trial and can submit an M-Pesa reference for review after it expires.",
+    "viewport": "desktop",
+    "covers": [
+      "brand subscription panel",
+      "14-day free trial",
+      "KES 400 monthly subscription",
+      "POST /api/brand/subscription/request",
+      "subscription reference validation"
+    ],
+    "steps": [
+      "Sign in as a brand owner",
+      "Open the brand dashboard",
+      "Verify the trial ends 14 days after its start date",
+      "Review the KES 400 per month subscription card",
+      "Enter a valid M-Pesa transaction reference",
+      "Submit the subscription request"
+    ],
+    "expected": "The request is saved as pending review and the brand owner sees that storefront activation awaits admin verification."
+  },
+  {
+    "name": "Admin reviews subscription payment",
+    "description": "Verify an admin can review pending brand subscription requests and approve one for 30 days.",
+    "viewport": "desktop",
+    "covers": [
+      "GET /api/admin/subscriptions",
+      "POST /api/admin/subscriptions/review",
+      "subscription approval",
+      "30-day subscription period"
+    ],
+    "steps": [
+      "Sign in as the Vaa admin",
+      "Open subscription approvals",
+      "Review a pending brand payment reference",
+      "Approve the subscription"
+    ],
+    "expected": "The subscription becomes active for 30 days and the brand storefront is eligible to appear on Vaa."
+  },
+  {
+    "name": "Customer checkout and payment are disabled",
+    "description": "Verify the customer-facing marketplace has no cart or checkout, and customers contact brands directly to arrange purchases.",
+    "viewport": "desktop",
+    "covers": [
+      "removed cart UI",
+      "removed customer checkout",
+      "Message Brand direct-contact flow",
+      "POST /api/orders disabled"
+    ],
+    "steps": [
+      "Browse products",
+      "Open a product detail panel",
+      "Verify the primary action is Message Brand and no cart icon is present",
+      "Attempt the legacy order API if available"
+    ],
+    "expected": "No cart, checkout, or customer payment option is available; customers can message brands, and legacy order creation returns a deprecation error."
+  },
+  {
+    "name": "Admin clears legacy order and payment history",
+    "description": "Verify only the authenticated Vaa admin can delete legacy order-related records while brand subscriptions and messaging remain.",
+    "sanity": false,
+    "viewport": "desktop",
+    "covers": [
+      "POST /api/admin/cleanup-order-history",
+      "admin-only destructive action",
+      "legacy order/payout/refund deletion",
+      "subscription and message preservation"
+    ],
+    "steps": [
+      "Sign in as the Vaa admin",
+      "Open the admin dashboard",
+      "Choose Delete legacy order history and confirm",
+      "Verify the completion message reports deleted records",
+      "Verify the KES 400 subscription panel and Messages still work"
+    ],
+    "expected": "Legacy orders, brand orders, payout records, refunds, and related order notifications are removed; brand subscription records and conversations remain."
+  },
+  {
+    "name": "Mobile account dropdown opens sign-in and sign-up",
+    "description": "Verify a mobile visitor can open a right-aligned account dropdown, choose sign-in or sign-up, and use the compact authentication dialog.",
+    "viewport": "mobile",
+    "covers": [
+      "mobile account dropdown aligned to the right screen edge",
+      "sign-in and sign-up menu actions",
+      "compact authentication dialog",
+      "sign-in and sign-up mode switch",
+      "customer and brand registration role choice",
+      "brand verification evidence collection",
+      "POST /api/account/profile verification fields",
+      "no business registration certificate requirement"
+    ],
+    "steps": [
+      "Open Vaa at a mobile viewport while signed out",
+      "Tap the account icon in the navbar",
+      "Verify the dropdown stays inside the viewport and aligns to the right screen edge",
+      "Verify Sign in and Sign up appear inside the dropdown",
+      "Choose Sign up and select Brand",
+      "Verify the brand verification section does not require a BRS certificate or government ID",
+      "Choose a proof type, confirm brand ownership, and submit registration",
+      "Switch to Sign in and verify the dialog remains usable"
+    ],
+    "expected": "Brand registration collects a proof type and ownership confirmation, stores the optional evidence link and notes with a pending verification status, and does not require business registration documents."
+  }
+]
