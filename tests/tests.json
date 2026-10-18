@@ -18,34 +18,38 @@
     ],
     "steps": [
       "Actor A signs in as a customer and opens a published product",
-      "Actor A chooses Message Brand and verifies the product card and prefilled size/availability inquiry",
-      "Actor A sends the inquiry",
-      "Actor B signs in as the owner of that brand and opens Messages from the brand dashboard",
-      "Actor B opens Actor A's thread and replies",
+      "Actor A chooses Message Brand and sends the prefilled size/availability inquiry",
+      "Actor B signs in as the owner of that brand, opens Messages and replies",
       "Actor A reopens the same conversation and verifies the reply remains visible after refresh"
     ],
     "expected": "Only the customer and linked brand owner can see the conversation; the brand owner can reply and both actors see the exchanged messages in the same thread."
   },
   {
-    "name": "Journal stories and curated collections lead to products",
-    "description": "Verify public editorial pages render and guide visitors from a story or collection to live marketplace listings.",
+    "name": "Brand submits a Journal story for admin approval",
+    "description": "Verify brand owners can draft and submit editorial stories with an image, and only approved stories appear in the public Journal.",
     "viewport": "desktop",
     "covers": [
-      "public Journal navigation",
-      "editorial story cards",
-      "story detail modal",
-      "curated collections",
-      "live product/category mapping",
-      "editorial-to-marketplace navigation"
+      "brand Journal editor",
+      "story draft persistence",
+      "image upload",
+      "brand ownership authorization",
+      "POST /api/brand/journal",
+      "PUT /api/brand/journal",
+      "GET /api/brand/journal",
+      "admin editorial review",
+      "POST /api/admin/journal/review",
+      "public GET /api/journal",
+      "published story product discovery"
     ],
     "steps": [
-      "Open Journal from the public navigation",
-      "Open a story and verify its title, copy and related-piece action appear",
-      "Choose Explore related pieces and verify the shop opens",
-      "Open Collections and inspect the curated edits",
-      "Choose Shop this edit and verify the shop filter reflects the selected category"
+      "Actor A signs in as a brand owner and opens Journal & Editorial in the brand dashboard",
+      "Actor A creates a story with title, intro, body, category and an image, then saves it as a draft",
+      "Actor A edits the draft and submits it for review",
+      "Actor B signs in as Vaa admin and opens editorial review",
+      "Actor B publishes Actor A's pending story",
+      "Open the public Journal and verify the approved story appears and its related-piece action opens relevant products"
     ],
-    "expected": "Journal stories and curated collection pages are accessible without sign-in and their actions lead back to the marketplace with relevant product filters."
+    "expected": "The story persists in the brand workspace, remains private while draft or pending, and appears publicly only after admin publication."
   },
   {
     "name": "Brand subscription request and admin approval",
