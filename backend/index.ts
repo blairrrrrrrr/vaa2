@@ -178,7 +178,7 @@ export const handler = router({
   'GET /api/brand/subscription': [requireAuth(), async ({ user }) => { const {items:owners}=await db.list<any>('brand_owners',{limit:500});const owner=owners.find((x:any)=>x.userId===user!.userId);if(!owner)return error('Brand owner access required',403);const {items}=await db.list<any>('brand_subscriptions',{limit:500});let subscription=items.find((x:any)=>x.brand===owner.brand);if(!subscription){const now=new Date().toISOString();const expiry=subscriptionExpiry(SUBSCRIPTION_TRIAL_DAYS);const [id]=await db.add('brand_subscriptions',[{brand:owner.brand,status:'TRIAL',price:BRAND_SUBSCRIPTION_PRICE,startedAt:now,expiresAt:expiry,createdAt:now,updatedAt:now}]);subscription={id,brand:owner.brand,status:'TRIAL',price:BRAND_SUBSCRIPTION_PRICE,startedAt:now,expiresAt:expiry};}else subscription=await normalizeTrialExpiry(subscription);return json({subscription,price:BRAND_SUBSCRIPTION_PRICE,currency:'KES',interval:'month',trialDays:SUBSCRIPTION_TRIAL_DAYS}); }],
   'POST /api/brand/subscription/request': [requireAuth(), async ({ body,user }) => {const input=body as any;const reference=String(input?.transactionReference||'').trim().toUpperCase();if(!/^[A-Z0-9]{6,24}$/.test(reference))return error('Enter a valid M-Pesa transaction reference (6–24 letters or numbers).',400);const {items:owners}=await db.list<any>('brand_owners',{limit:500});const owner=owners.find((x:any)=>x.userId===user!.userId);if(!owner)return error('Brand owner access required',403);const {items}=await db.list<any>('brand_subscriptions',{limit:500});const current=items.find((x:any)=>x.brand===owner.brand);if(current&&['ACTIVE','TRIAL'].includes(String(current.status))&&String(current.expiresAt||'')>new Date().toISOString())return error('Your trial or subscription is still active. You can submit a renewal reference after it expires.',409);const now=new Date().toISOString();const record={...(current||{}),brand:owner.brand,ownerUserId:user!.userId,price:BRAND_SUBSCRIPTION_PRICE,status:'PENDING_REVIEW',transactionReference:reference,requestedAt:now,updatedAt:now};if(current)await db.update('brand_subscriptions',[{id:current.id,record}]);else await db.add('brand_subscriptions',[record]);return json({saved:true,status:'PENDING_REVIEW',transactionReference:reference});}],
   'GET /api/admin/subscriptions': [requireAuth(),requireAdminEmailAllowlist(ADMIN_EMAILS),async()=>{const {items}=await db.list<any>('brand_subscriptions',{limit:500});return json({subscriptions:items.sort((a:any,b:any)=>String(b.requestedAt||b.updatedAt||'').localeCompare(String(a.requestedAt||a.updatedAt||'')))});}],
-  'POST /api/admin/subscriptions/review': [requireAuth(),requireAdminEmailAllowlist(ADMIN_EMAILS),async({body})=>{const input=body as any;const brand=String(input?.brand||'').trim();const decision=String(input?.decision||'');if(!brand||!['APPROVE','REJECT'].includes(decision))return error('Brand and valid decision are required',400);const {items}=await db.list<any>('brand_subscriptions',{limit:500});const current=items.find((x:any)=>x.brand===brand&&x.status==='PENDING_REVIEW');if(!current)return error('Pending subscription request not found',404);const now=new Date().toISOString();const expiresAt=decision==='APPROVE'?subscriptionExpiry(30):current.expiresAt;const record={...current,status:decision==='APPROVE'?'ACTIVE':'PAYMENT_REJECTED',startedAt:decision==='APPROVE'?now:current.startedAt,expiresAt,reviewedAt:now,reviewedBy:'ADMIN',updatedAt:now};const ok=await db.update('brand_subscriptions',[{id:current.id,record}]);if(!ok[0])return error('Could not review subscription',500);const {items:owners}=await db.list<any>('brand_owners',{limit:500});const owner=owners.find((x:any)=>x.brand===brand);if(owner)await db.add('notifications',[{userId:owner.userId,type:'SUBSCRIPTION_UPDATE',title:decision==='APPROVE'?'Storefront subscription active':'Subscription payment needs review',message:decision==='APPROVE'?'Your KES 400 subscription is active until '+expiresAt.slice(0,10):'We could not verify your subscription reference. Please check it and resubmit.',read:false,createdAt:now}]);return json({saved:true,subscription:record});}],  'GET /api/messages': [requireAuth(), async ({ user }) => { const [{items:messages},{items:owners}] = await Promise.all([db.list<any>('messages',{limit:500}),db.list<any>('brand_owners',{limit:500})]); const ownedBrands=owners.filter((x:any)=>x.userId===user!.userId).map((x:any)=>String(x.brand)); const mine=messages.filter((m:any)=>(m.customerUserId===user!.userId||m.brandOwnerUserId===user!.userId)&&(ownedBrands.length===0||m.customerUserId===user!.userId||ownedBrands.includes(String(m.brand)))); const grouped=new Map<string,any>(); for(const message of mine){const key=String(message.conversationId);const current=grouped.get(key)||{conversationId:key,brand:message.brand,customerUserId:message.customerUserId,brandOwnerUserId:message.brandOwnerUserId,productId:message.productId||null,messages:[]};current.messages.push(message);grouped.set(key,current);} const conversations=Array.from(grouped.values()).map((x:any)=>({...x,messages:x.messages.sort((a:any,b:any)=>String(a.createdAt).localeCompare(String(b.createdAt))),lastMessageAt:x.messages[x.messages.length-1]?.createdAt||''})).sort((a:any,b:any)=>String(b.lastMessageAt).localeCompare(String(a.lastMessageAt)));return json({conversations}); }],
+  'POST /api/admin/subscriptions/review': [requireAuth(),requireAdminEmailAllowlist(ADMIN_EMAILS),async({body})=>{const input=body as any;const brand=String(input?.brand||'').trim();const decision=String(input?.decision||'');if(!brand||!['APPROVE','REJECT'].includes(decision))return error('Brand and valid decision are required',400);const {items}=await db.list<any>('brand_subscriptions',{limit:500});const current=items.find((x:any)=>x.brand===brand&&x.status==='PENDING_REVIEW');if(!current)return error('Pending subscription request not found',404);const now=new Date().toISOString();const expiresAt=decision==='APPROVE'?subscriptionExpiry(30):current.expiresAt;const record={...current,status:decision==='APPROVE'?'ACTIVE':'PAYMENT_REJECTED',startedAt:decision==='APPROVE'?now:current.startedAt,expiresAt,reviewedAt:now,reviewedBy:'ADMIN',updatedAt:now};const ok=await db.update('brand_subscriptions',[{id:current.id,record}]);if(!ok[0])return error('Could not review subscription',500);const {items:owners}=await db.list<any>('brand_owners',{limit:500});const owner=owners.find((x:any)=>x.brand===brand);if(owner)await db.add('notifications',[{userId:owner.userId,type:'SUBSCRIPTION_UPDATE',title:decision==='APPROVE'?'Storefront subscription active':'Subscription payment needs review',message:decision==='APPROVE'?'Your KES 400 subscription is active until '+expiresAt.slice(0,10):'We could not verify your subscription reference. Please check it and resubmit.',read:false,createdAt:now}]);return json({saved:true,subscription:record});}],  'GET /api/messages': [requireAuth(), async ({ user }) => { const [{items:messages},{items:owners}] = await Promise.all([db.list<any>('messages',{limit:500}),db.list<any>('brand_owners',{limit:500})]); const ownedBrands=owners.filter((x:any)=>x.userId===user!.userId).map((x:any)=>String(x.brand)); const mine=messages.filter((m:any)=>m.customerUserId===user!.userId||(m.brandOwnerUserId===user!.userId&&ownedBrands.includes(String(m.brand)))); const grouped=new Map<string,any>(); for(const message of mine){const key=String(message.conversationId);const current=grouped.get(key)||{conversationId:key,brand:message.brand,customerUserId:message.customerUserId,brandOwnerUserId:message.brandOwnerUserId,productId:message.productId||null,messages:[]};current.messages.push(message);grouped.set(key,current);} const conversations=Array.from(grouped.values()).map((x:any)=>({...x,messages:x.messages.sort((a:any,b:any)=>String(a.createdAt).localeCompare(String(b.createdAt))),lastMessageAt:x.messages[x.messages.length-1]?.createdAt||''})).sort((a:any,b:any)=>String(b.lastMessageAt).localeCompare(String(a.lastMessageAt)));return json({conversations}); }],
   'POST /api/messages': [requireAuth(), async ({ body,user }) => { const input=body as any;const text=String(input?.body||'').trim();if(!text||text.length>2000)return error('Message must contain 1–2000 characters',400);const {items:owners}=await db.list<any>('brand_owners',{limit:500});const owned=owners.find((x:any)=>x.userId===user!.userId);let brand=String(input?.brand||'').trim();let customerUserId=String(input?.customerUserId||'');let brandOwnerUserId=String(input?.brandOwnerUserId||'');let conversationId=String(input?.conversationId||'');if(conversationId){const {items:all}=await db.list<any>('messages',{limit:500});const thread=all.find((m:any)=>m.conversationId===conversationId);if(!thread)return error('Conversation not found',404);brand=String(thread.brand);customerUserId=String(thread.customerUserId);brandOwnerUserId=String(thread.brandOwnerUserId);if(user!.userId!==customerUserId&&user!.userId!==brandOwnerUserId)return error('Conversation access denied',403);}else{if(owned)return error('Choose a customer conversation before replying',400);if(!brand)return error('Brand is required',400);const owner=owners.find((x:any)=>String(x.brand)===brand);if(!owner)return error('Brand not found',404);const visible=await ensureBrandSubscriptions([brand]);if(!visible.has(brand))return error('This brand storefront is not currently active on Vaa',403);brandOwnerUserId=owner.userId;customerUserId=user!.userId;conversationId='thread_'+customerUserId.replace(/[^a-zA-Z0-9]/g,'').slice(0,18)+'_'+brandOwnerUserId.replace(/[^a-zA-Z0-9]/g,'').slice(0,18)+'_'+brand.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,18);}const recipientUserId=user!.userId===customerUserId?brandOwnerUserId:customerUserId;const record={conversationId,brand,customerUserId,brandOwnerUserId,productId:Number(input?.productId||0)||null,senderUserId:user!.userId,recipientUserId,senderName:String(user!.name||user!.email||'Vaa member'),body:text,read:false,createdAt:new Date().toISOString()};const [id]=await db.add('messages',[record]);if(!id)return error('Could not send message',500);await db.add('notifications',[{userId:recipientUserId,type:'MESSAGE',title:'New message about '+brand,message:text.slice(0,160),conversationId,brand,read:false,createdAt:record.createdAt}]);return json({saved:true,message:{...record,id}}); }],
   'GET /api/admin/access': [requireAuth(), requireAdminEmailAllowlist(ADMIN_EMAILS), async ({ user }) => json({ isAdmin: true, email: user!.email })],
   'GET /api/admin/accounts': [requireAuth(), requireAdminEmailAllowlist(ADMIN_EMAILS), async ({ user }) => {
@@ -198,3 +198,94 @@ export const handler = router({
 
       const staleBrandRecords = storefronts.filter((x:any) =>
         x.ownerUserId === user!.userId || staleBrands.includes(String(x.brand || '').trim())
+      );
+      for (const brand of staleBrandRecords) await db.delete('brands', [brand.id]);
+
+      const staleProductRecords = products.filter((x:any) =>
+        x.ownerUserId === user!.userId || staleBrands.includes(String(x.brand || '').trim())
+      );
+      for (const product of staleProductRecords) await db.delete('products', [product.id]);
+    }
+
+    const accounts = profiles
+      .filter((p:any) => p.status !== 'DELETED')
+      .map((p:any) => {
+        const profileEmail = String(p.email || '').toLowerCase();
+        const adminAccount = ADMIN_EMAILS.some((email) => email.toLowerCase() === profileEmail);
+        const ownerBrand = owners.find((o:any) => o.userId === p.userId)?.brand || '';
+        return {
+          userId: String(p.userId || ''),
+          email: String(p.email || ''),
+          name: String(p.customerName || p.founderName || p.name || ''),
+          role: adminAccount ? 'ADMIN' : String(p.role || 'customer').toUpperCase(),
+          status: String(p.status || 'ACTIVE'),
+          brandName: adminAccount ? '' : String(p.brandName || ownerBrand || ''),
+          phone: String(p.customerPhone || p.phone || ''),
+          location: String(p.customerLocation || p.location || ''),
+          createdAt: String(p.createdAt || '')
+        };
+      })
+      .filter((x:any) => x.userId);
+
+    if (!accounts.some((x:any) => x.email.toLowerCase() === adminEmail) && isPrimaryAdmin) {
+      accounts.unshift({
+        userId: String(user!.userId),
+        email: String(user!.email || ''),
+        name: String(user!.name || 'Vaa Admin'),
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        brandName: '',
+        phone: '',
+        location: '',
+        createdAt: ''
+      });
+    }
+
+    return json({ accounts });
+  }],
+  'DELETE /api/admin/accounts': [requireAuth(), requireAdminEmailAllowlist(ADMIN_EMAILS), async ({ query, user }) => { const userId=String(query.userId||'').trim(); if(!userId)return error('userId is required',400); if(userId===user!.userId)return error('The signed-in admin account cannot be deleted',403); const {items:profiles}=await db.list<any>('account_profiles',{limit:500}); const target=profiles.find((p:any)=>p.userId===userId&&p.status!=='DELETED'); if(!target)return error('Account not found',404); if(String(target.email||'').toLowerCase()===ADMIN_EMAILS[0].toLowerCase())return error('The primary admin account cannot be deleted',403); const now=new Date().toISOString(); await db.update('account_profiles',[{id:target.id,record:{...target,status:'DELETED',email:'',name:'',customerName:'',customerPhone:'',customerLocation:'',founderName:'',phone:'',instagram:'',website:'',location:'',description:'',brandName:'',deletedAt:now,updatedAt:now}}]); const {items:owners}=await db.list<any>('brand_owners',{limit:500}); for(const x of owners.filter((x:any)=>x.userId===userId))await db.delete('brand_owners',[x.id]); const {items:brands}=await db.list<any>('brands',{limit:500}); for(const x of brands.filter((x:any)=>x.ownerUserId===userId))await db.delete('brands',[x.id]); const {items:products}=await db.list<any>('products',{limit:500}); for(const x of products.filter((x:any)=>x.ownerUserId===userId))await db.delete('products',[x.id]); const {items:payouts}=await db.list<any>('payouts',{limit:500}); for(const x of payouts.filter((x:any)=>x.userId===userId))await db.delete('payouts',[x.id]); const {items:notifications}=await db.list<any>('notifications',{limit:500}); for(const x of notifications.filter((x:any)=>x.userId===userId))await db.delete('notifications',[x.id]); return json({deleted:true,userId,note:'Account profile removed; historical orders and payment records retained for reconciliation.'}); }],
+  'GET /api/account/notifications': [requireAuth(), async ({ user }) => { const { items }=await db.list<any>('notifications',{limit:500}); const rows=items.filter((x:any)=>x.userId===user!.userId).sort((a:any,b:any)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,50); return json({notifications:rows,unread:rows.filter((x:any)=>!x.read).length}); }],
+  'POST /api/account/notifications/read': [requireAuth(), async ({ user }) => { const { items }=await db.list<any>('notifications',{limit:500}); const rows=items.filter((x:any)=>x.userId===user!.userId&&!x.read); for(const row of rows) await db.update('notifications',[{id:row.id,record:{...row,read:true,readAt:new Date().toISOString()}}]); return json({saved:true}); }],
+  'POST /api/analytics/event': [async ({ body }) => { const input=body as any; const allowed=['page_view','product_view']; const event=String(input?.event||''); if(!allowed.includes(event))return error('Invalid analytics event',400); const key='analytics:'+String(input?.sessionId||input?.orderId||'anonymous'); if(!allowRate(key,60,60000))return error('Too many analytics events',429); const metadata=input?.metadata; const serialized=metadata===undefined?'':JSON.stringify(metadata); if(serialized.length>4000)return error('Analytics metadata too large',413); await db.add('analytics_events',[{event,productId:input.productId?Number(input.productId):null,orderId:String(input.orderId||''),metadata:metadata&&typeof metadata==='object'?metadata:{},createdAt:new Date().toISOString()}]); return json({saved:true}); }],
+  'POST /api/admin/cleanup-order-history': [
+    requireAuth(),
+    requireAdminEmailAllowlist(ADMIN_EMAILS),
+    async () => {
+      const readAll = async (table: string) => {
+        const items: any[] = [];
+        let nextToken: string | undefined;
+        let pages = 0;
+        do {
+          const page = await db.list<any>(table, { limit: 500, ...(nextToken ? { nextToken } : {}) });
+          items.push(...page.items);
+          nextToken = page.nextToken;
+          pages += 1;
+          if (pages >= 20 && nextToken) return { items, incomplete: true };
+        } while (nextToken);
+        return { items, incomplete: false };
+      };
+      const deleteRecords = async (table: string, rows: any[]) => {
+        let deleted = 0;
+        for (let i = 0; i < rows.length; i += 500) {
+          const outcomes = await db.delete(table, rows.slice(i, i + 500).map((row: any) => row.id));
+          if (outcomes.some((ok: boolean) => !ok)) throw new Error('Some records could not be deleted from ' + table);
+          deleted += outcomes.length;
+        }
+        return deleted;
+      };
+      const deleted: Record<string, number> = {};
+      for (const table of ['orders', 'brand_orders', 'brand_payouts', 'refunds']) {
+        const result = await readAll(table);
+        if (result.incomplete) return error('Cleanup stopped safely because ' + table + ' contains more than 10,000 records. No records from that table were deleted.', 413);
+        deleted[table] = await deleteRecords(table, result.items);
+      }
+      const notices = await readAll('notifications');
+      if (notices.incomplete) return error('Cleanup stopped safely because notifications contain more than 10,000 records.', 413);
+      const orderNotices = notices.items.filter((item: any) => Boolean(item.orderId || item.brandOrderId) || ['ORDER_UPDATE', 'REFUND_UPDATE'].includes(String(item.type || '')));
+      deleted.order_notifications = await deleteRecords('notifications', orderNotices);
+      return json({ deleted, totalDeleted: Object.values(deleted).reduce((sum, count) => sum + count, 0) });
+    }
+  ],
+  'GET /api/admin/analytics': [requireAuth(), requireAdminEmailAllowlist(ADMIN_EMAILS), async () => { const { items }=await db.list<any>('analytics_events',{limit:5000}); const count=(event:string)=>items.filter((x:any)=>x.event===event).length; return json({events:items.length,pageViews:count('page_view'),productViews:count('product_view')}); }],
+
+});
