@@ -167,4 +167,7 @@ CREATE TABLE IF NOT EXISTS app_records (
 CREATE INDEX IF NOT EXISTS idx_app_records_table_created
     ON app_records (table_name, created_at, id);
 
+CREATE INDEX IF NOT EXISTS idx_app_records_data
+    ON app_records USING GIN (data jsonb_path_ops);
+
 COMMIT;
