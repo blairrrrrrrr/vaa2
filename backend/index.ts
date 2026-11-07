@@ -1,6 +1,6 @@
 import { router, json, error, requireAuth, requireAdminEmailAllowlist } from '@appdeploy/sdk';
 import { storage } from '@appdeploy/sdk';
-import { db } from './database';
+import { db, databaseMode } from './database';
 
 const BRAND_SUBSCRIPTION_PRICE = 400;
 const SUBSCRIPTION_TRIAL_DAYS = 14;
@@ -123,16 +123,25 @@ export const handler = router({
   }],
   'DELETE /api/account': [requireAuth(), async ({ user }) => {
     if ((user!.email || '').toLowerCase() === ADMIN_EMAILS[0].toLowerCase()) return error('The admin account cannot be deleted from this screen.', 403);
-    const { items: profiles } = await db.list<any>('account_profiles', { limit: 100 });
-    const ownProfiles = profiles.filter((x:any) => x.userId === user!.userId).map((x:any) => x.id);
-    if (ownProfiles.length) await db.delete('account_profiles', ownProfiles);
-    const { items: owners } = await db.list<any>('brand_owners', { limit: 100 });
-    const ownOwners = owners.filter((x:any) => x.userId === user!.userId).map((x:any) => x.id);
-    if (ownOwners.length) await db.delete('brand_owners', ownOwners);
-    const { items: storefronts } = await db.list<any>('brands', { limit: 100 });
-    const ownStorefronts = storefronts.filter((x:any) => x.ownerUserId === user!.userId).map((x:any) => x.id);
-    if (ownStorefronts.length) await db.delete('brands', ownStorefronts);
-    return json({ deleted: true, note: 'Vaa account profile and brand access removed. The AppDeploy authentication identity is managed by the authentication provider.' });
+    const { items: profiles } = await db.list<any>('account_profiles', { limit: 500 });
+    for (const profile of profiles.filter((x:any) => x.userId === user!.userId)) await db.delete('account_profiles', [profile.id]);
+    const { items: owners } = await db.list<any>('brand_owners', { limit: 500 });
+    const ownedBrands = Array.from(new Set(owners.filter((x:any) => x.userId === user!.userId).map((x:any) => String(x.brand || '')).filter(Boolean)));
+    for (const owner of owners.filter((x:any) => x.userId === user!.userId)) await db.delete('brand_owners', [owner.id]);
+    const { items: storefronts } = await db.list<any>('brands', { limit: 500 });
+    for (const brand of storefronts.filter((x:any) => x.ownerUserId === user!.userId)) await db.delete('brands', [brand.id]);
+    const { items: products } = await db.list<any>('products', { limit: 500 });
+    for (const product of products.filter((x:any) => x.ownerUserId === user!.userId)) await db.delete('products', [product.id]);
+    const { items: stories } = await db.list<any>('journal_stories', { limit: 1000 });
+    for (const story of stories.filter((x:any) => x.ownerUserId === user!.userId)) await db.delete('journal_stories', [story.id]);
+    const { items: messages } = await db.list<any>('messages', { limit: 1000 });
+    for (const message of messages.filter((x:any) => x.customerUserId === user!.userId || x.brandOwnerUserId === user!.userId)) await db.delete('messages', [message.id]);
+    const now = new Date().toISOString();
+    const { items: subscriptions } = await db.list<any>('brand_subscriptions', { limit: 500 });
+    for (const subscription of subscriptions.filter((x:any) => ownedBrands.includes(String(x.brand)))) await db.update('brand_subscriptions', [{ id: subscription.id, record: { ...subscription, status: 'CANCELLED', cancelledAt: now, updatedAt: now } }]);
+    const { items: notifications } = await db.list<any>('notifications', { limit: 500 });
+    for (const notice of notifications.filter((x:any) => x.userId === user!.userId)) await db.delete('notifications', [notice.id]);
+    return json({ deleted: true, note: 'Vaa profile, brand access, content and conversations removed. The authentication identity is managed by the authentication provider; historical order/payment records are retained for reconciliation.' });
   }],
   'GET /api/account/profile': [requireAuth(), async ({ user }) => {
     const { items } = await db.list<any>('account_profiles', { limit: 500 });
@@ -142,19 +151,8 @@ export const handler = router({
   }],
   'GET /api/brand/access': [requireAuth(), async (ctx) => {
     const isAdmin = ADMIN_EMAILS.some((email) => email.toLowerCase() === String(ctx.user!.email || '').toLowerCase());
-    if (isAdmin) {
-      const { items: owners } = await db.list<any>('brand_owners', { limit: 500 });
-      const staleOwners = owners.filter((x:any) => x.userId === ctx.user!.userId);
-      const staleBrands = Array.from(new Set(staleOwners.map((x:any) => String(x.brand || '').trim()).filter(Boolean)));
-      for (const owner of staleOwners) await db.delete('brand_owners', [owner.id]);
-      const { items: storefronts } = await db.list<any>('brands', { limit: 500 });
-      const adminBrandIds = storefronts.filter((x:any) => x.ownerUserId === ctx.user!.userId || staleBrands.includes(String(x.brand || '').trim())).map((x:any) => x.id);
-      if (adminBrandIds.length) await db.delete('brands', adminBrandIds);
-      const { items: products } = await db.list<any>('products', { limit: 500 });
-      const adminProductIds = products.filter((x:any) => x.ownerUserId === ctx.user!.userId || staleBrands.includes(String(x.brand || '').trim())).map((x:any) => x.id);
-      if (adminProductIds.length) await db.delete('products', adminProductIds);
-      return json({ isBrandOwner: false, brands: [], deletedBrands: staleBrands });
-    }
+    if (isAdmin) return json({ isBrandOwner: false, brands: [] });
+
     const { items: profiles } = await db.list<any>('account_profiles', { limit: 500 });
     const profile = profiles.find((x:any) => x.userId === ctx.user!.userId);
     const { items: owners } = await db.list<any>('brand_owners', { limit: 500 });
@@ -190,22 +188,6 @@ export const handler = router({
     ]);
     const adminEmail = String(user!.email || '').toLowerCase();
     const isPrimaryAdmin = ADMIN_EMAILS.some((email) => email.toLowerCase() === adminEmail);
-
-    if (isPrimaryAdmin) {
-      const staleOwners = owners.filter((x:any) => x.userId === user!.userId);
-      const staleBrands = Array.from(new Set(staleOwners.map((x:any) => String(x.brand || '').trim()).filter(Boolean)));
-      for (const owner of staleOwners) await db.delete('brand_owners', [owner.id]);
-
-      const staleBrandRecords = storefronts.filter((x:any) =>
-        x.ownerUserId === user!.userId || staleBrands.includes(String(x.brand || '').trim())
-      );
-      for (const brand of staleBrandRecords) await db.delete('brands', [brand.id]);
-
-      const staleProductRecords = products.filter((x:any) =>
-        x.ownerUserId === user!.userId || staleBrands.includes(String(x.brand || '').trim())
-      );
-      for (const product of staleProductRecords) await db.delete('products', [product.id]);
-    }
 
     const accounts = profiles
       .filter((p:any) => p.status !== 'DELETED')
@@ -243,7 +225,34 @@ export const handler = router({
 
     return json({ accounts });
   }],
-  'DELETE /api/admin/accounts': [requireAuth(), requireAdminEmailAllowlist(ADMIN_EMAILS), async ({ query, user }) => { const userId=String(query.userId||'').trim(); if(!userId)return error('userId is required',400); if(userId===user!.userId)return error('The signed-in admin account cannot be deleted',403); const {items:profiles}=await db.list<any>('account_profiles',{limit:500}); const target=profiles.find((p:any)=>p.userId===userId&&p.status!=='DELETED'); if(!target)return error('Account not found',404); if(String(target.email||'').toLowerCase()===ADMIN_EMAILS[0].toLowerCase())return error('The primary admin account cannot be deleted',403); const now=new Date().toISOString(); await db.update('account_profiles',[{id:target.id,record:{...target,status:'DELETED',email:'',name:'',customerName:'',customerPhone:'',customerLocation:'',founderName:'',phone:'',instagram:'',website:'',location:'',description:'',brandName:'',deletedAt:now,updatedAt:now}}]); const {items:owners}=await db.list<any>('brand_owners',{limit:500}); for(const x of owners.filter((x:any)=>x.userId===userId))await db.delete('brand_owners',[x.id]); const {items:brands}=await db.list<any>('brands',{limit:500}); for(const x of brands.filter((x:any)=>x.ownerUserId===userId))await db.delete('brands',[x.id]); const {items:products}=await db.list<any>('products',{limit:500}); for(const x of products.filter((x:any)=>x.ownerUserId===userId))await db.delete('products',[x.id]); const {items:payouts}=await db.list<any>('payouts',{limit:500}); for(const x of payouts.filter((x:any)=>x.userId===userId))await db.delete('payouts',[x.id]); const {items:notifications}=await db.list<any>('notifications',{limit:500}); for(const x of notifications.filter((x:any)=>x.userId===userId))await db.delete('notifications',[x.id]); return json({deleted:true,userId,note:'Account profile removed; historical orders and payment records retained for reconciliation.'}); }],
+  'DELETE /api/admin/accounts': [requireAuth(), requireAdminEmailAllowlist(ADMIN_EMAILS), async ({ query, user }) => {
+    const userId = String(query.userId || '').trim();
+    if (!userId) return error('userId is required', 400);
+    if (userId === user!.userId) return error('The signed-in admin account cannot be deleted', 403);
+    const { items: profiles } = await db.list<any>('account_profiles', { limit: 500 });
+    const target = profiles.find((p:any) => p.userId === userId && p.status !== 'DELETED');
+    if (!target) return error('Account not found', 404);
+    if (String(target.email || '').toLowerCase() === ADMIN_EMAILS[0].toLowerCase()) return error('The primary admin account cannot be deleted', 403);
+    const now = new Date().toISOString();
+    await db.update('account_profiles', [{ id: target.id, record: { ...target, status: 'DELETED', email: '', name: '', customerName: '', customerPhone: '', customerLocation: '', founderName: '', phone: '', instagram: '', website: '', location: '', description: '', brandName: '', deletedAt: now, updatedAt: now } }]);
+    const { items: owners } = await db.list<any>('brand_owners', { limit: 500 });
+    const owned = owners.filter((x:any) => x.userId === userId);
+    const ownedBrands = Array.from(new Set(owned.map((x:any) => String(x.brand || '')).filter(Boolean)));
+    for (const owner of owned) await db.delete('brand_owners', [owner.id]);
+    const { items: storefronts } = await db.list<any>('brands', { limit: 500 });
+    for (const brand of storefronts.filter((x:any) => x.ownerUserId === userId)) await db.delete('brands', [brand.id]);
+    const { items: products } = await db.list<any>('products', { limit: 500 });
+    for (const product of products.filter((x:any) => x.ownerUserId === userId)) await db.delete('products', [product.id]);
+    const { items: stories } = await db.list<any>('journal_stories', { limit: 1000 });
+    for (const story of stories.filter((x:any) => x.ownerUserId === userId)) await db.delete('journal_stories', [story.id]);
+    const { items: messages } = await db.list<any>('messages', { limit: 1000 });
+    for (const message of messages.filter((x:any) => x.customerUserId === userId || x.brandOwnerUserId === userId)) await db.delete('messages', [message.id]);
+    const { items: subscriptions } = await db.list<any>('brand_subscriptions', { limit: 500 });
+    for (const subscription of subscriptions.filter((x:any) => ownedBrands.includes(String(x.brand)))) await db.update('brand_subscriptions', [{ id: subscription.id, record: { ...subscription, status: 'CANCELLED', cancelledAt: now, updatedAt: now } }]);
+    const { items: notifications } = await db.list<any>('notifications', { limit: 500 });
+    for (const notice of notifications.filter((x:any) => x.userId === userId)) await db.delete('notifications', [notice.id]);
+    return json({ deleted: true, userId, note: 'Account access, brand content and conversations removed. Historical order/payment records retained for reconciliation.' });
+  }],
   'GET /api/account/notifications': [requireAuth(), async ({ user }) => { const { items }=await db.list<any>('notifications',{limit:500}); const rows=items.filter((x:any)=>x.userId===user!.userId).sort((a:any,b:any)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,50); return json({notifications:rows,unread:rows.filter((x:any)=>!x.read).length}); }],
   'POST /api/account/notifications/read': [requireAuth(), async ({ user }) => { const { items }=await db.list<any>('notifications',{limit:500}); const rows=items.filter((x:any)=>x.userId===user!.userId&&!x.read); for(const row of rows) await db.update('notifications',[{id:row.id,record:{...row,read:true,readAt:new Date().toISOString()}}]); return json({saved:true}); }],
   'POST /api/analytics/event': [async ({ body }) => { const input=body as any; const allowed=['page_view','product_view']; const event=String(input?.event||''); if(!allowed.includes(event))return error('Invalid analytics event',400); const key='analytics:'+String(input?.sessionId||input?.orderId||'anonymous'); if(!allowRate(key,60,60000))return error('Too many analytics events',429); const metadata=input?.metadata; const serialized=metadata===undefined?'':JSON.stringify(metadata); if(serialized.length>4000)return error('Analytics metadata too large',413); await db.add('analytics_events',[{event,productId:input.productId?Number(input.productId):null,orderId:String(input.orderId||''),metadata:metadata&&typeof metadata==='object'?metadata:{},createdAt:new Date().toISOString()}]); return json({saved:true}); }],
@@ -293,5 +302,18 @@ export const handler = router({
   'GET /api/admin/journal': [requireAuth(),requireAdminEmailAllowlist(ADMIN_EMAILS),async()=>{const {items}=await db.list<any>('journal_stories',{limit:1000});return json({stories:items.sort((a:any,b:any)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))});}],
   'POST /api/admin/journal/review': [requireAuth(),requireAdminEmailAllowlist(ADMIN_EMAILS),async({body,user})=>{const input=body as any;const storyId=String(input?.storyId||'');const decision=String(input?.decision||'');if(!storyId||!['PUBLISH','REJECT'].includes(decision))return error('Story and valid review decision are required',400);const {items}=await db.list<any>('journal_stories',{limit:1000});const current=items.find((s:any)=>String(s.id)===storyId&&s.status==='PENDING_REVIEW');if(!current)return error('Pending Journal story not found',404);const now=new Date().toISOString();const record={...current,status:decision==='PUBLISH'?'PUBLISHED':'REJECTED',publishedAt:decision==='PUBLISH'?now:'',reviewedAt:now,reviewedBy:user!.userId,updatedAt:now};const ok=await db.update('journal_stories',[{id:current.id,record}]);if(!ok[0])return error('Could not review Journal story',500);await db.add('notifications',[{userId:current.ownerUserId,type:'JOURNAL_REVIEW',title:decision==='PUBLISH'?'Your Journal story is published':'Your Journal story needs changes',message:decision==='PUBLISH'?'“'+current.title+'” is now live in the Vaa Journal.':'“'+current.title+'” was not approved yet. Edit it and submit again.',read:false,createdAt:now}]);return json({saved:true,story:record});}],
   'GET /api/admin/analytics': [requireAuth(), requireAdminEmailAllowlist(ADMIN_EMAILS), async () => { const { items }=await db.list<any>('analytics_events',{limit:5000}); const count=(event:string)=>items.filter((x:any)=>x.event===event).length; return json({events:items.length,pageViews:count('page_view'),productViews:count('product_view')}); }],
+  'GET /api/admin/migration/export': [requireAuth(), requireAdminEmailAllowlist(ADMIN_EMAILS), async ({ query }) => {
+    if (databaseMode !== 'appdeploy') return error('This export endpoint is only for exporting the current AppDeploy database.', 409);
+    const allowedTables = ['account_profiles','brand_owners','brands','products','orders','brand_orders','order_items','payments','commissions','payouts','brand_payouts','refunds','reviews','journal_stories','messages','notifications','analytics_events','brand_subscriptions'];
+    const table = String(query.table || '');
+    if (!allowedTables.includes(table)) return error('Unknown migration table', 400);
+    const limit = Math.max(1, Math.min(100, Number(query.limit || 100)));
+    try {
+      const page = await db.list<any>(table, { limit, ...(query.nextToken ? { nextToken: query.nextToken } : {}) });
+      return json({ table, items: page.items, nextToken: page.nextToken || null });
+    } catch {
+      return error('Could not export this table. Retry the export without changing the table or page token.', 500);
+    }
+  }],
 
 });
