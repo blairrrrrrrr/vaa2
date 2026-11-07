@@ -1,40 +1,44 @@
 # Vaa PostgreSQL migration
 
-## Current migration stage
+## Current state
 
-The backend now has a compatibility adapter for its existing record-oriented data access.
-When `DATABASE_URL` is absent, it continues using AppDeploy's database so the deployed
-marketplace remains available. When `DATABASE_URL` is set, backend records are read and
-written in PostgreSQL's `app_records` table. Uploaded product images and AppDeploy
-authentication are still managed by AppDeploy.
+Vaa remains on the AppDeploy database until a hosted PostgreSQL database has been prepared, imported and verified. The backend compatibility adapter stores existing logical records in PostgreSQL's `app_records` JSONB table when `DATABASE_URL` is configured; otherwise it safely falls back to AppDeploy. Authentication and uploaded images remain on AppDeploy.
 
-This is an initial persistence migration layer; it does not automatically copy existing
-AppDeploy records into PostgreSQL. Do not switch a live environment to an empty PostgreSQL
-database until its records have been exported and imported.
+## 1. Prepare PostgreSQL
 
-## Prepare local PostgreSQL
+1. Create a hosted PostgreSQL database reachable by the AppDeploy backend. A database listening only on `localhost` on your PC cannot be reached by the hosted app.
+2. Apply `database/schema.sql`.
+3. Back up the target before importing.
 
-1. Create a database and dedicated user for Vaa.
-2. From the repository root, apply the schema:
+## 2. Export Vaa records
 
-   ```bash
-   psql -U vaa_user -d vaa -f database/schema.sql
-   ```
+1. Sign in to Vaa as the administrator and open the Admin dashboard.
+2. Click **Export database for PostgreSQL**.
+3. Keep the downloaded JSON private. It contains account, messaging and marketplace data.
 
-3. Copy `.env.example` to `.env` and set `DATABASE_URL` to your local connection string.
-4. Install dependencies with `npm install`.
+The export uses an administrator-allowlisted, paginated API and is available only while the current database mode is AppDeploy.
 
-Never commit a real `.env` file or put database credentials in source control.
+## 3. Import
 
-## Using PostgreSQL with the hosted AppDeploy backend
+Run this from the repository root on a machine with Node.js:
 
-A database running only on your computer cannot be reached by the hosted Vaa backend.
-For hosted PostgreSQL, configure `DATABASE_URL` as an AppDeploy backend secret and use
-a database endpoint reachable from AppDeploy. Apply the schema to that database first.
+```bash
+npm install
+DATABASE_URL='postgresql://USER:PASSWORD@HOST:5432/DATABASE' node scripts/import-appdeploy-export.mjs ./vaa-appdeploy-export.json
+```
 
-## Compatibility model
+The importer validates the export format and table names, runs inside a transaction, and upserts by the original logical table and record ID. Back up an existing database before re-importing.
 
-The adapter preserves the backend's existing logical table names and record fields in
-JSONB, which reduces the risk of changing marketplace workflows during the first step.
-The normalized tables already present in `schema.sql` are retained for a later, explicit
-relational migration. Keep a backup and verify the export/import before production cutover.
+## 4. Verify before switching the live app
+
+Compare the row counts in PostgreSQL `app_records` with the export for every table. Specifically verify `account_profiles`, `brand_owners`, `brands`, `products`, `brand_subscriptions`, `journal_stories`, `messages` and `notifications`. Test customer browsing, brand workspace, admin dashboard, messages, subscriptions and public Journal against a staging database first.
+
+## 5. Configure the hosted backend
+
+After verification, add `DATABASE_URL` as an AppDeploy backend secret and deploy/restart. Confirm the backend is using PostgreSQL before treating cutover as complete. Keep the JSON export and a rollback backup.
+
+## Important
+
+- Do not expose a home PostgreSQL server directly to the public internet. Use a managed hosted database or a secure network arrangement.
+- Do not commit `.env`, exports, credentials or connection strings to GitHub.
+- This first migration preserves the existing record shapes in JSONB. Moving to normalized relational tables is a separate later optimization.
