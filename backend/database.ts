@@ -38,24 +38,28 @@ const decodeOffset = (token?: string) => {
 const postgresDb = {
   async list<T = RecordData>(table: string, options: ListOptions = {}) {
     requireTableName(table);
-    const limit = Math.max(1, Math.min(10000, Math.floor(Number(options.limit || 100))));
+    const limit = Math.max(1, Math.min(500, Math.floor(Number(options.limit || 100))));
     const offset = decodeOffset(options.nextToken);
+    const values: unknown[] = [table];
+    let where = 'table_name = $1';
+    if (options.filter && Object.keys(options.filter).length) {
+      values.push(JSON.stringify(options.filter));
+      where += ' AND data @> $' + values.length + '::jsonb';
+    }
+    values.push(limit + 1, offset);
     const result = await pool!.query(
-      'SELECT id, data FROM app_records WHERE table_name = $1 ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3',
-      [table, limit + 1, offset],
+      'SELECT id, data FROM app_records WHERE ' + where +
+      ' ORDER BY created_at ASC, id ASC LIMIT $' + (values.length - 1) +
+      ' OFFSET $' + values.length,
+      values,
     );
     const hasMore = result.rows.length > limit;
     const items = result.rows.slice(0, limit).map((row: { id: string; data: RecordData }) => ({
       ...(row.data || {}),
       id: row.id,
     }));
-    const filtered = options.filter
-      ? items.filter((item: RecordData) =>
-          Object.entries(options.filter!).every(([key, value]) => item[key] === value),
-        )
-      : items;
     return {
-      items: filtered as Array<Omit<T, 'id'> & { id: string }>,
+      items: items as Array<Omit<T, 'id'> & { id: string }>,
       ...(hasMore ? { nextToken: 'offset:' + String(offset + limit) } : {}),
     };
   },
