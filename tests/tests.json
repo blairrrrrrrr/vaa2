@@ -112,5 +112,43 @@
       "Switch to Sign in and verify the dialog remains usable"
     ],
     "expected": "The mobile dropdown stays inside the viewport and both registration and sign-in remain usable."
+  },
+  {
+    "name": "Public Journal only displays approved brand stories",
+    "description": "Verify public Journal content comes from persisted submissions and excludes drafts and pending stories.",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "GET /api/journal",
+      "draft privacy",
+      "pending review privacy",
+      "admin editorial publication",
+      "empty Journal state"
+    ],
+    "steps": [
+      "Open Journal with no published stories and verify an empty state",
+      "Save a brand story as a draft and verify it is not public",
+      "Submit the story for review and verify it remains private",
+      "Publish it as admin and verify it appears publicly"
+    ],
+    "expected": "Only persisted PUBLISHED stories appear in the public Journal; no demo stories or unpublished submissions are visible."
+  },
+  {
+    "name": "PostgreSQL migration export is protected and paginated",
+    "description": "Verify only the allowlisted administrator can export AppDeploy records in bounded pages.",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "GET /api/admin/migration/export",
+      "admin allowlist",
+      "pagination",
+      "Vaa export format"
+    ],
+    "steps": [
+      "Sign in as admin and download the database export",
+      "Verify the export contains supported tables and original record IDs",
+      "Attempt the export as a non-admin user"
+    ],
+    "expected": "Admin receives paginated export data; non-admin access is denied; export is disabled after PostgreSQL cutover."
   }
 ]
